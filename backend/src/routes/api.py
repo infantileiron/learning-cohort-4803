@@ -3,13 +3,14 @@ import redis
 from fastapi import APIRouter,Depends,HTTPException,Response
 from sqlalchemy.exc import IntegrityError
 from src.config.database import db
-from src.models.entities import User,Event,Cohort,Intervention,Audit
-from src.schemas.business import Login,EventInput,CohortInput,InterventionInput,NoteInput
+from src.models.entities import User,Event,Cohort,Intervention,Trial,Audit
+from src.schemas.business import Login,EventInput,CohortInput,InterventionInput,NoteInput,TrialInput,SettleInput
 from src.middlewares.auth import current,editor,admin
 from src.utils.security import verify,token
 from src.services.business import audit,dump
 from src.services.interventions import draft
-from src.controllers.business import ensure_cohort,ensure_intervention
+from src.services import trials as trial_service
+from src.controllers.business import ensure_cohort,ensure_intervention,ensure_trial
 router=APIRouter()
 @router.post('/auth/login')
 def login(data:Login,s=Depends(db)):
@@ -70,9 +71,31 @@ def edit_intervention(i:int,data:NoteInput,u=Depends(editor),s=Depends(db)):
 def approve(i:int,u=Depends(admin),s=Depends(db)):
  r=ensure_intervention(s,i)
  if r.status!='draft':raise HTTPException(409,'已签核，不可重复签核')
+ # 与试验发布相同的加锁顺序（trials 后 interventions），串行化并发发布与签核。
+ s.query(Trial).with_for_update().all()
+ s.query(Intervention).with_for_update().all()
+ trial_service.assert_control_guard(s,r.members or [])
  r.status='approved';s.commit();audit(s,u,'签核干预清单 '+str(i));return dump(r)
 @router.get('/interventions/{i}/export')
 def action_export(i:int,u=Depends(current),s=Depends(db)):
  r=ensure_intervention(s,i);return dump(r)
+@router.get('/trials')
+def trial_list(u=Depends(current),s=Depends(db)):return [dump(r) for r in s.query(Trial).order_by(Trial.id.desc()).all()]
+@router.post('/trials')
+def trial_create(data:TrialInput,u=Depends(editor),s=Depends(db)):
+ r=trial_service.create_trial(s,ensure_cohort(s,data.cohort_id),data);audit(s,u,'建立对照试验 '+str(r.id));return dump(r)
+@router.get('/trials/{i}')
+def trial_detail(i:int,u=Depends(current),s=Depends(db)):return dump(ensure_trial(s,i))
+@router.post('/trials/{i}/publish')
+def trial_publish(i:int,u=Depends(editor),s=Depends(db)):
+ r=trial_service.publish_trial(s,ensure_trial(s,i));audit(s,u,'发布对照试验 '+str(i));return dump(r)
+@router.post('/trials/{i}/settle')
+def trial_settle(i:int,data:SettleInput,u=Depends(editor),s=Depends(db)):
+ r=trial_service.settle_trial(s,ensure_trial(s,i),data.as_of);audit(s,u,'结算对照试验 '+str(i));return dump(r)
+@router.get('/trials/{i}/export')
+def trial_export(i:int,u=Depends(current),s=Depends(db)):
+ r=ensure_trial(s,i)
+ if r.state!='settled':raise HTTPException(409,'结算完成后才能导出')
+ return Response(json.dumps(dump(r),ensure_ascii=False,indent=2),media_type='application/json',headers={'Content-Disposition':f'attachment; filename="learning-trial-{i}.json"'})
 @router.get('/audits')
 def audits(u=Depends(admin),s=Depends(db)):return [dump(r) for r in s.query(Audit).order_by(Audit.id.desc()).limit(100)]

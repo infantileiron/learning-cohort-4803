@@ -30,3 +30,11 @@ class InterventionInput(BaseModel):
  week_index:int=Field(ge=1,le=8)
  note:str=Field(min_length=8,max_length=2000)
 class NoteInput(BaseModel):note:str=Field(min_length=8,max_length=2000)
+class TrialInput(BaseModel):
+ name:str=Field(min_length=2,max_length=100)
+ cohort_id:int=Field(gt=0)
+ cohort_week:str=Field(min_length=10,max_length=10)
+ week_index:int=Field(ge=1,le=8)
+ observe_weeks:int=Field(ge=1,le=8)
+class SettleInput(BaseModel):
+ as_of:date

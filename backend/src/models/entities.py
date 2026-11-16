@@ -11,7 +11,10 @@ class Cohort(Base):
  id=Column(Integer,primary_key=True);name=Column(String(100));start_week=Column(String(10));end_week=Column(String(10));as_of=Column(String(10));horizon=Column(Integer);state=Column(String(20),default='queued');result=Column(JSON,nullable=True);error=Column(Text,default='')
 class Intervention(Base):
  __tablename__='interventions'
- id=Column(Integer,primary_key=True);cohort_id=Column(Integer,ForeignKey('cohorts.id'));cohort_week=Column(String(10));week_index=Column(Integer);note=Column(Text);members=Column(JSON);status=Column(String(20),default='draft')
+ id=Column(Integer,primary_key=True);cohort_id=Column(Integer,ForeignKey('cohorts.id'));cohort_week=Column(String(10));week_index=Column(Integer);note=Column(Text);members=Column(JSON);status=Column(String(20),default='draft');trial_id=Column(Integer,ForeignKey('trials.id'),nullable=True)
+class Trial(Base):
+ __tablename__='trials'
+ id=Column(Integer,primary_key=True);name=Column(String(100),nullable=False);cohort_id=Column(Integer,ForeignKey('cohorts.id'));cohort_week=Column(String(10),nullable=False);week_index=Column(Integer,nullable=False);observe_weeks=Column(Integer,nullable=False);state=Column(String(20),default='pending');assignment=Column(JSON,nullable=False);result=Column(JSON,nullable=True);intervention_id=Column(Integer,nullable=True);error=Column(Text,default='')
 class Audit(Base):
  __tablename__='audits'
  id=Column(Integer,primary_key=True);actor=Column(String(100));action=Column(String(200));created=Column(String(40))
